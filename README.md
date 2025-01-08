@@ -38,9 +38,11 @@ UlogAnalyse 日志分析软件是一个基于 PyQt6、pyulog 和 EChart 的日�
 
 ## 致谢
 
+[[pyulog]](https://github.com/PX4/pyulog) ulog 日志解析的 python 库
+
 [[Ghost-Downloader-3]](https://github.com/XiaoYouChR/Ghost-Downloader-3/tree/main) 参考了其部分实现代码
 
-[[pyulog]](https://github.com/PX4/pyulog) ulog 日志解析的 python 库
+[[bangumi-renamer]](https://github.com/nuthx/bangumi-renamer) 参考了其部分代码和构建脚本
 
 ## 免责
 
