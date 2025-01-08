@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECharts</title>
+    <!-- 引入刚刚下载的 ECharts 文件 -->
+    <script src="echarts.min.js"></script>
+    <style type="text/css">
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: transparent;
+        }
+
+        #main {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+        }
+
+        .tip {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+        }
+
+        .tip-color {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            margin: 0 5px;
+        }
+
+        .tip-name {
+            display: flex;
+        }
+
+        .tip-num {
+            display: flex;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- 为 ECharts 准备一个定义了宽高的 DOM -->
+    <div id="main"></div>
+    <script type="text/javascript">
+        // 基于准备好的dom，初始化echarts实例
+        var myChart = echarts.init(document.getElementById('main'), null, { locale: "ZH" });
+        var options = undefined;
+        window.addEventListener('resize', () => myChart.resize())
+        // ulog时间戳转换
+        function ulogTimestampToTime(timestamp, type) {
+            if (type == 0) {
+                return timestamp / 1e6
+            } else if (type == 1) {
+                const hours = Math.floor(timestamp / 6e7);
+                const minutes = Math.floor((timestamp % 6e7) / 1e6);
+                const seconds = Math.floor((timestamp % 1e6) / 1e3);
+                return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(3, '0')}`;
+            } else {
+                return timestamp
+            }
+        }
+        // 添加指示线
+        function addMarkLine(xValue) {
+            if (!options) {
+                return
+            }
+            for (let i = 0; i < options['series'].length; i++) {
+                if (options['series'][i].name == 'markLine') {
+                    options['series'].pop()
+                }
+            }
+            options['series'].push({
+                name: "markLine",
+                type: "line",
+                markLine: {
+                    // 上下图标可以单独设置，可为空
+                    symbolSize: [14, 17],
+                    label: {
+                        show: true,
+                        padding: [0, 0, 5, 0],
+                        formatter() {
+                            return ulogTimestampToTime(xValue, 1)
+                        }
+                    },
+                    data: [
+                        {
+                            xAxis: xValue
+                        }
+                    ],
+                    lineStyle: {
+                        "width": 1,
+                        "color": '#979797'
+                    }
+                },
+            })
+            myChart.setOption(options)
+        }
+        // 重新注册EChart
+        function registerEChart(theme) {
+            // 释放资源
+            myChart.dispose()
+            // 重新注册echart
+            myChart = echarts.init(document.getElementById("main"), theme, { locale: "ZH" })
+            if (options) {
+                myChart.setOption(options)
+            }
+        }
+        // tooltipFormatter
+        function tooltipFormatter(param) {
+            if (param.length == 0) {
+                return
+            }
+            time = ulogTimestampToTime(param[0].value[0], 1)
+            format = ['时间: ' + time + '<hr size=1 style="margin:3px 0">']
+            for (let i = 0; i < param.length; i++) {
+                format.push(`<div class="tip"><div class="tip-color" style="background-color:${param[i].color}"></div><div class="tip-name">${param[i].seriesName}:</div><div class="tip-num">${param[i].value[1]}</div></div>`)
+            }
+            return format.join('');
+        }
+    </script>
+</body>
+
+</html>

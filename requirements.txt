@@ -1,0 +1,4 @@
+PyQt6==6.8.0
+PyQt6-Fluent-Widgets==1.7.4
+PyQt6-WebEngine==6.8.0
+pyulog
