@@ -8,8 +8,9 @@ from qfluentwidgets import (
     setTheme,
     InfoBar,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QUrl
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QFileDialog
+from PyQt6.QtGui import QDesktopServices
 import sys
 from src.common.config import COPYRIGHT, appConfig
 
@@ -176,6 +177,9 @@ class SettingInterface(SmoothScrollArea):
             self.backgroundEffectCard.comboBox.currentIndexChanged.connect(
                 self.onBackgroundEffectCardChanged
             )
+        self.feedbackCard.clicked.connect(
+            lambda: QDesktopServices.openUrl(QUrl(COPYRIGHT["FEEDBACK_URL"]))
+        )
         # 警告信息
         self.dangerMessageCard.comboBox.currentIndexChanged.connect(
             self.onDangerMessageChanged

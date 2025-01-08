@@ -100,7 +100,7 @@ COPYRIGHT = {
     "AUTHOR": "nichijoux",
     "VERSION": "1.0.0",
     "AUTHOR_URL": "https://github.com/nichijoux",
-    "FEEDBACK_URL": "https://github.com/nichijoux/UlogAnalysis/issues",
+    "FEEDBACK_URL": "https://github.com/nichijoux/UlogAnalyse/issues",
 }
 
 
