@@ -70,7 +70,7 @@ class MainWindow(MSFluentWindow):
         )
         # 设置图标和标题
         self.setWindowIcon(QIcon(getResource("src/resources/images/icon.jpg")))
-        self.setWindowTitle("Ulog Analysis")
+        self.setWindowTitle("Ulog Analyse")
 
     def initNavigation(self):
         """
@@ -87,7 +87,7 @@ class MainWindow(MSFluentWindow):
 
     def initConnect(self):
         # 重新画图
-        self.settingInterface.chartTypeChanged.connect(
+        self.settingInterface.chartRedrawSignal.connect(
             lambda: self.mainInterface.drawChart()
         )
 

@@ -5,6 +5,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ECharts</title>
+    <!-- 引入qwebchannel -->
+    <script type="text/javascript" src="qrc:///qtwebchannel/qwebchannel.js"></script>
     <!-- 引入刚刚下载的 ECharts 文件 -->
     <script src="echarts.min.js"></script>
     <style type="text/css">
@@ -12,6 +14,10 @@
             margin: 0;
             padding: 0;
             background-color: transparent;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            overflow-x: hidden;
+            overflow-y: hidden;
         }
 
         #main {
@@ -51,6 +57,12 @@
         // 基于准备好的dom，初始化echarts实例
         var myChart = echarts.init(document.getElementById('main'), null, { locale: "ZH" });
         var options = undefined;
+        var echartHandler = undefined;
+        // 注册qt和html之间的桥梁
+        new QWebChannel(qt.webChannelTransport, function (channel) {
+            echartHandler = channel.objects.echartHandler;
+        })
+        // 动态调整图表
         window.addEventListener('resize', () => myChart.resize())
         // ulog时间戳转换
         function ulogTimestampToTime(timestamp, type) {
@@ -71,12 +83,12 @@
                 return
             }
             for (let i = 0; i < options['series'].length; i++) {
-                if (options['series'][i].name == 'markLine') {
+                if (options['series'][i].name == '__echartMarkLine') {
                     options['series'].pop()
                 }
             }
             options['series'].push({
-                name: "markLine",
+                name: "__echartMarkLine",
                 type: "line",
                 markLine: {
                     // 上下图标可以单独设置，可为空
@@ -110,6 +122,19 @@
             if (options) {
                 myChart.setOption(options)
             }
+            // 获取缩放后的x轴和y轴范围
+            myChart.on("dataZoom", function (params) {
+                //const originOption = myChart.getOption()
+                //const xAxisMin = originOption.xAxis[0].min;
+                //const xAxisMax = originOption.xAxis[1].max;
+                //const yAxisMin = originOption.yAxis[0].min;
+                //const yAxisMax = originOption.yAxis[1].max;
+                // 直接获取缩放后的刻度线
+                //let xSE = myChart.getModel().getComponent("xAxis").axis.scale._extent
+                //let ySE = myChart.getModel().getComponent("yAxis").axis.scale._extent
+               // echartHandler.zoomAxis(xSE[0], xSE[1], ySE[0], ySE[1])
+               // echartHandler.print(xAxisMin, xAxisMax, yAxisMin, yAxisMax)
+            })
         }
         // tooltipFormatter
         function tooltipFormatter(param) {
@@ -122,6 +147,14 @@
                 format.push(`<div class="tip"><div class="tip-color" style="background-color:${param[i].color}"></div><div class="tip-name">${param[i].seriesName}:</div><div class="tip-num">${param[i].value[1]}</div></div>`)
             }
             return format.join('');
+        }
+        // 设置背景色
+        function setBodyBackground(theme) {
+            if (theme == 'dark') {
+                document.body.style.backgroundColor = "black"
+            } else {
+                document.body.style.backgroundColor = "transparent"
+            }
         }
     </script>
 </body>

@@ -1,4 +1,4 @@
-import sys
+import sys, re
 
 from PyQt6.QtCore import QRect, QDir
 from qfluentwidgets import (
@@ -49,11 +49,56 @@ class GeometrySerializer(ConfigSerializer):
         return QRect(x, y, w, h)
 
 
+class ThresholdValidator(ConfigValidator):
+    """
+    图像采样阈值设置
+
+    参数:
+        ConfigValidator (_type_): _description_
+    """
+
+    def validate(self, value: str) -> bool:
+        if type(value) == str and re.match(r"^\d+$", value):
+            return True
+        else:
+            return False
+
+    def correct(self, value) -> str:
+        return value if self.validate(value) else "6000"
+
+
 class Config(QConfig):
     # 导出路径
     importFolder = ConfigItem(
-        "Import", "ImportFolder", QDir.currentPath(), FolderValidator()
+        "Software", "ImportFolder", QDir.currentPath(), FolderValidator()
     )
+    # 参数配置文件
+    fieldsConfig = ConfigItem("Software", "FieldsConfig", "", restart=True)
+    # 图表类型
+    chartType = OptionsConfigItem(
+        "Software",
+        "ChartType",
+        "line",
+        OptionsValidator(["line", "scatter"]),
+        restart=False,
+    )
+    # 图表采样
+    chartSampling = OptionsConfigItem(
+        "Software",
+        "ChartSampling",
+        "lttb",
+        OptionsValidator(["lttb", "none"]),
+        restart=False,
+    )
+    # 图表采样阈值
+    chartThreshold = ConfigItem(
+        "Software",
+        "ChartThreshold",
+        "6000",
+        ThresholdValidator(),
+        restart=False,
+    )
+
     if sys.platform == "win32":
         backgroundEffect = OptionsConfigItem(
             "Personalization",
@@ -69,22 +114,6 @@ class Config(QConfig):
         OptionsValidator([1, 1.25, 1.5, 1.75, 2, "Auto"]),
         restart=True,
     )
-    # 是否显示警告信息
-    dangerMessage = OptionsConfigItem(
-        "Personalization",
-        "DangerMessage",
-        "一直显示",
-        OptionsValidator(["一直显示", "不再显示"]),
-        restart=False,
-    )
-    # 图标类型
-    chartType = OptionsConfigItem(
-        "Software",
-        "ChartType",
-        "line",
-        OptionsValidator(["line", "scatter"]),
-        restart=False,
-    )
     # 保存程序的位置和大小, Validator 在 mainWindow 中设置
     geometry = ConfigItem(
         "Software", "Geometry", "Default", GeometryValidator(), GeometrySerializer()
@@ -98,10 +127,10 @@ class Config(QConfig):
 COPYRIGHT = {
     "YEAR": 2025,
     "AUTHOR": "nichijoux",
-    "VERSION": "1.0.0",
+    "VERSION": "1.1.0",
     "AUTHOR_URL": "https://github.com/nichijoux",
+    "PROJECT_DOWNLOAD_URL": "https://github.com/nichijoux/UlogAnalyse/releases",
     "FEEDBACK_URL": "https://github.com/nichijoux/UlogAnalyse/issues",
 }
-
 
 appConfig = Config()

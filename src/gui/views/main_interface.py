@@ -5,13 +5,15 @@ from qfluentwidgets import (
     LineEdit,
     TreeWidget,
     TableWidget,
+    ProgressBar,
     FluentIcon as Icons,
-    theme,
     InfoBar,
+    InfoBarPosition,
     CaptionLabel,
+    isDarkTheme,
 )
 from qframelesswindow.webengine import FramelessWebEngineView
-from PyQt6.QtCore import Qt, QUrl, QTimer
+from PyQt6.QtCore import Qt, QUrl, QObject, pyqtSlot, pyqtSignal, QThread
 from PyQt6.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
@@ -23,16 +25,67 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QSplitter,
 )
+from PyQt6.QtWebChannel import QWebChannel
 import numpy as np
-import os
+import os, json
 from src.common.config import appConfig
 from src.gui.components.label_input_card import LabelInputCard
 from src.gui.components.label_text_card import LabelTextCard
 from src.gui.views.info_dialog import LogInfoDialog
-from src.gui.views.message_dialog import MessageDialog
 from src.utils.ulog_utils import *
 from src.utils.resource_utils import getResource
-from src.utils.common_utils import debounce, throttle
+from src.utils.common_utils import *
+
+
+class EChartHandler(QObject):
+    filterData = pyqtSignal(float, float, float, float)
+
+    @pyqtSlot(float, float, float, float)
+    def zoomAxis(self, xS, xE, yS, yE):
+        self.filterData.emit(xS, xE, yS, yE)
+
+
+class ExportThread(QThread):
+    # 当前导出进度的信号
+    progressChanged = pyqtSignal(int)
+
+    exportStarted = pyqtSignal()
+
+    exportFinished = pyqtSignal()
+
+    def __init__(self, fields: dict, parent=None):
+        super().__init__(parent=parent)
+        self.fields = fields
+
+    def run(self):
+        self.exportStarted.emit()
+        delimiter = ","
+        progress = 0
+        for topField in self.fields:
+            out_file_name = os.path.join(
+                appConfig.get(appConfig.importFolder), topField + ".csv"
+            )
+            with open(out_file_name, "w", encoding="utf-8") as csvfile:
+                # 写入属性行
+                csvfile.write(
+                    delimiter.join([inner for inner in self.fields[topField]]) + "\n"
+                )
+                # 挨个写入属性值(按行写入)
+                for i in range(len(self.fields[topField]["timestamp"])):
+                    for k, innerField in enumerate(self.fields[topField]):
+                        if innerField == "timestamp":
+                            csvfile.write(str(self.fields[topField][innerField][i]))
+                        else:
+                            csvfile.write(
+                                str(self.fields[topField][innerField]["value"][i])
+                            )
+                        if k != len(self.fields[topField]) - 1:
+                            csvfile.write(delimiter)
+                    # 写入回车
+                    csvfile.write("\n")
+                progress += 1
+                self.progressChanged.emit(progress)
+        self.exportFinished.emit()
 
 
 class MainInterface(CardWidget):
@@ -44,16 +97,16 @@ class MainInterface(CardWidget):
         self.initUI()
         # 初始化控件事件
         self.initConnect()
+        # 初始化其他参数
+        self.initInterface()
+
+    def initInterface(self):
+        # 初始化interface
+        configFilePath = appConfig.get(appConfig.fieldsConfig)
+        if configFilePath != "":
+            with open(configFilePath, "r") as configFile:
+                self.fieldConfig = json.load(configFile)
         # 初始画图相关信息
-        QTimer.singleShot(
-            1000,
-            lambda: self.htmlWidget.page().runJavaScript(
-                f"""
-                myChart.dispose()
-                myChart = echarts.init(document.getElementById('main'), "{theme().name}", {{ locale: "ZH" }});
-            """
-            ),
-        )
         self.canDraw = True
 
     # ui 部分
@@ -63,9 +116,12 @@ class MainInterface(CardWidget):
         # 日志参数
         self.parameterButton = PushButton("日志参数", self, Icons.INFO)
         # 选项按钮
-        self.viewSelectBox = ComboBox()
+        self.viewSelectBox = ComboBox(self)
         self.viewSelectBox.addItems(["Boot时间", "GPS时间"])
         self.viewSelectBox.setCurrentIndex(0)
+        # 导出按钮
+        self.exportButton = PushButton("导出CSV", self, Icons.IMAGE_EXPORT)
+        self.exportButton.setHidden(True)
         # 布局设置
         headerLayout = QHBoxLayout()
         headerLayout.setContentsMargins(5, 5, 5, 5)
@@ -76,6 +132,8 @@ class MainInterface(CardWidget):
         headerLayout.addWidget(self.viewSelectBox)
         headerLayout.addSpacing(4)
         headerLayout.addStretch(0)
+        headerLayout.addWidget(self.exportButton)
+        headerLayout.addSpacing(4)
         return headerLayout
 
     def initFieldTreeWidget(self):
@@ -107,7 +165,7 @@ class MainInterface(CardWidget):
             QHeaderView.ResizeMode.Stretch
         )
         self.logTable.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
-        self.logTable.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.logTable.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
 
         # 启用边框并设置圆角
         self.logTable.setBorderVisible(True)
@@ -165,6 +223,12 @@ class MainInterface(CardWidget):
         self.htmlWidget.load(
             QUrl("file:///" + getResource("src/resources/html/index.html"))
         )
+        # 注册html的channel
+        self.channel = QWebChannel()
+        # 注册html的object
+        self.echartHandler = EChartHandler()
+        self.channel.registerObject("echartHandler", self.echartHandler)
+        self.htmlWidget.page().setWebChannel(self.channel)
         return self.htmlWidget
 
     def initCenterWidget(self):
@@ -186,9 +250,17 @@ class MainInterface(CardWidget):
         contentSpliter.setStretchFactor(1, 7)
         return contentSpliter
 
-    def initStatusWidget(self):
+    def initStatusLayout(self):
+        statusLayout = QVBoxLayout()
         self.statusWidget = CaptionLabel("状态:")
-        return self.statusWidget
+        self.statusProgressBar = ProgressBar()
+        # 先隐藏
+        self.statusProgressBar.setHidden(True)
+        # 布局添加
+        statusLayout.addWidget(self.statusWidget)
+        statusLayout.addSpacing(5)
+        statusLayout.addWidget(self.statusProgressBar)
+        return statusLayout
 
     def initUI(self):
         # 菜单区
@@ -196,7 +268,7 @@ class MainInterface(CardWidget):
         # 核心区
         centerWidget = self.initCenterWidget()
         # 底部区域
-        statusWidget = self.initStatusWidget()
+        statusLayout = self.initStatusLayout()
         # 组装为UI界面
         layout = QVBoxLayout()
         # 添加顶部区域
@@ -205,7 +277,7 @@ class MainInterface(CardWidget):
         layout.addLayout(headerLayout)
         # # 设置中间区域最大
         layout.addWidget(centerWidget)
-        layout.addWidget(statusWidget)
+        layout.addLayout(statusLayout)
         # 设置核心部件撑满
         layout.setStretch(0, 0)
         layout.setStretch(1, 1)
@@ -221,40 +293,29 @@ class MainInterface(CardWidget):
         # 日志参数按钮
         self.parameterButton.clicked.connect(self.openInfoDialog)
         # 视图选项
-        self.viewSelectBox.currentIndexChanged.connect(self.viewSelectChanged)
+        self.viewSelectBox.currentIndexChanged.connect(self.onViewSelectChanged)
+        # 导出按钮
+        self.exportButton.clicked.connect(self.exportCSV)
         # 搜索框
-        self.searchEdit.textChanged.connect(self.searchEditChanged)
+        self.searchEdit.textChanged.connect(self.onSearchTextChanged)
         # 参数列表
-        self.fieldTree.itemChanged.connect(self.fieldChanged)
-        self.fieldTree.itemClicked.connect(self.fieldClicked)
+        self.fieldTree.itemChanged.connect(self.onFieldChanged)
+        self.fieldTree.itemClicked.connect(self.onFieldClicked)
         # 日志表格双击事件
-        self.logTable.itemDoubleClicked.connect(self.logTableDoubleClicked)
+        self.logTable.itemDoubleClicked.connect(self.onLogTableDoubleClicked)
         # 缩放参数
-        self.fieldOffsetCard.editingFinished.connect(self.offsetChanged)
-        self.fieldZoomCard.editingFinished.connect(self.zoomChanged)
+        self.fieldOffsetCard.editingFinished.connect(self.onOffsetChanged)
+        self.fieldZoomCard.editingFinished.connect(self.onZoomChanged)
+        # 设置背景颜色
+        self.htmlWidget.loadFinished.connect(
+            lambda: self.toggleEchartTheme(isDarkTheme())
+        )
 
     def openUlog(self):
         """
         打开ulog文件并解析(可以打开多个)
         """
-        # 展示警告信息
-        if appConfig.get(appConfig.dangerMessage) == "一直显示":
-            # dialog = MessageDialog(self.window())
-            # dialog.exec()
-            pass
-            # dialog = Dialog(
-            #     "警告",
-            #     "同时打开多个ulog文件可能导致数据冲突,请确保他们属于同组数据",
-            #     self.window(),
-            # )
-            # dialog.yesButton.setText("确定")
-            # dialog.cancelButton.setText("不再显示")
-            # dialog.cancelButton.setStyleSheet("background-color:#E2211C;color:white;")
-            # self.window().setMicaEffectEnabled(True)
-            # if not dialog.exec():
-            #     # 不再显示
-            #     appConfig.set(appConfig.dangerMessage, "不再显示")
-        # 在打开文件前,存储已经展示了哪些属性
+        # # 在打开文件前,存储已经展示了哪些属性
         displayedFields = {}
         for i in range(self.fieldTree.topLevelItemCount()):
             topItem = self.fieldTree.topLevelItem(i)
@@ -271,6 +332,7 @@ class MainInterface(CardWidget):
         )
         if len(fileList) == 0:
             return
+        self.exportButton.setHidden(False)
         # 清空数据
         files = ",".join(map(os.path.basename, fileList))
         self.statusWidget.setText(f"当前打开文件:{files}")
@@ -358,7 +420,114 @@ class MainInterface(CardWidget):
         )
         w.exec()
 
-    def logTableDoubleClicked(self, item: QTableWidgetItem):
+    def onExportStart(self):
+        """
+        导出开始的函数
+        """
+        self.statusProgressBar.setRange(0, len(self.fields))
+        self.statusProgressBar.setHidden(False)
+
+    def onExportFinised(self):
+        """
+        导出完成的函数
+        """
+        self.statusProgressBar.setHidden(True)
+        InfoBar.success(
+            "提示",
+            "导出成功",
+            duration=1500,
+            position=InfoBarPosition.TOP_RIGHT,
+            parent=self.window(),
+        )
+
+    def exportCSV(self):
+        """
+        将ulg数据导出为csv
+        """
+        exportThread = ExportThread(fields=self.fields, parent=self.window())
+        # 导出开始
+        exportThread.exportStarted.connect(self.onExportStart)
+        # 导出完成
+        exportThread.exportFinished.connect(self.onExportFinised)
+        # 导出进行中
+        exportThread.progressChanged.connect(
+            lambda value: self.statusProgressBar.setValue(value)
+        )
+        exportThread.start()
+
+    def onFieldClicked(self, item: QTreeWidgetItem, column: int):
+        """
+        描述:
+            点击某个属性的处理函数
+
+        参数:
+            item (QTreeWidgetItem): 树的子项
+            column (int): 第几列
+        """
+        parent = item.parent()
+        if parent:
+            topField = parent.text(column)
+            innerField = item.text(column)
+            data = self.fields[topField][innerField]
+            translate = None
+            if hasattr(self, "fieldConfig"):
+                translate = self.fieldConfig.get(topField, {}).get(innerField)
+            # 改变数据
+            self.fieldLabelCard.setText(
+                f"{topField}.{innerField}({translate})"
+                if translate
+                else f"{topField}.{innerField}"
+            )
+            self.fieldOffsetCard.setInitValue(data["offset"])
+            self.fieldZoomCard.setInitValue(data["zoom"])
+            # 设置当前选中了那个元素
+            self.selectTopField = topField
+            self.selectInnerField = innerField
+
+    def onFieldChanged(self, item: QTreeWidgetItem, column: int):
+        # 禁止再次发送信号
+        self.fieldTree.blockSignals(True)
+        # 联动子节点状态
+        if item.checkState(column) != Qt.CheckState.PartiallyChecked:
+            # 存储节点状态防止联动时导致状态进行改变
+            state = item.checkState(column)
+            # 遍历所有子节点,将其状态设置为父节点的状态
+            for i in range(item.childCount()):
+                child = item.child(i)
+                # 如果没有设置为隐藏,则设置其状态
+                if not child.isHidden():
+                    child.setCheckState(column, state)
+        # 联动父节点状态
+        parent = item.parent()
+        if parent is not None:
+            checked = 0
+            unchecked = 0
+            count = 0
+            # 遍历所有的子节点设置其状态
+            for i in range(parent.childCount()):
+                child = parent.child(i)
+                if not child.isHidden():
+                    # 子项没有隐藏
+                    count += 1
+                    state = child.checkState(column)
+                    checked += state == Qt.CheckState.Checked
+                    unchecked += state == Qt.CheckState.Unchecked
+            # 对比判断父节点需要设置的状态(不需要检测是否hidden,因为子项选中与否说明父项一定存在)
+            if checked == count:
+                # 设置父节点为全选
+                parent.setCheckState(column, Qt.CheckState.Checked)
+            elif unchecked == count:
+                # 设置父节点为未选中
+                parent.setCheckState(column, Qt.CheckState.Unchecked)
+            else:
+                # 设置父节点为部分选中
+                parent.setCheckState(column, Qt.CheckState.PartiallyChecked)
+        # 可以再次触发信号
+        self.fieldTree.blockSignals(False)
+        # 绘制图表
+        self.drawChart()
+
+    def onLogTableDoubleClicked(self, item: QTableWidgetItem):
         # 获取行列
         timeItem = self.logTable.item(item.row(), 0)
         # 在图像上添加一列数据
@@ -375,19 +544,19 @@ class MainInterface(CardWidget):
             """
         )
 
-    def offsetChanged(self, value: float):
+    def onOffsetChanged(self, value: float):
         if self.selectTopField and self.selectInnerField:
             self.fields[self.selectTopField][self.selectInnerField]["offset"] = value
             # 重绘图表
             self.drawChart()
 
-    def zoomChanged(self, value: float):
+    def onZoomChanged(self, value: float):
         if self.selectTopField and self.selectInnerField:
             self.fields[self.selectTopField][self.selectInnerField]["zoom"] = value
             # 重绘图表
             self.drawChart()
 
-    def viewSelectChanged(self, index: int):
+    def onViewSelectChanged(self, index: int):
         """
         描述:
             数据时间展示
@@ -400,7 +569,7 @@ class MainInterface(CardWidget):
 
     @debounce(1000)
     @throttle(500)
-    def searchEditChanged(self, text: str):
+    def onSearchTextChanged(self, text: str):
         """
         描述:
             用于展示搜索的函数
@@ -513,71 +682,6 @@ class MainInterface(CardWidget):
             for j in range(3):
                 self.logTable.setItem(i, j, QTableWidgetItem(message[j]))
 
-    def fieldClicked(self, item: QTreeWidgetItem, column: int):
-        """
-        描述:
-            点击某个属性的处理函数
-
-        参数:
-            item (QTreeWidgetItem): 树的子项
-            column (int): 第几列
-        """
-        parent = item.parent()
-        if parent:
-            topField = parent.text(column)
-            innerField = item.text(column)
-            data = self.fields[topField][innerField]
-            # 改变数据
-            self.fieldLabelCard.setText(f"{topField}.{innerField}")
-            self.fieldOffsetCard.setInitValue(data["offset"])
-            self.fieldZoomCard.setInitValue(data["zoom"])
-            # 设置当前选中了那个元素
-            self.selectTopField = topField
-            self.selectInnerField = innerField
-
-    def fieldChanged(self, item: QTreeWidgetItem, column: int):
-        # 禁止再次发送信号
-        self.fieldTree.blockSignals(True)
-        # 联动子节点状态
-        if item.checkState(column) != Qt.CheckState.PartiallyChecked:
-            # 存储节点状态防止联动时导致状态进行改变
-            state = item.checkState(column)
-            # 遍历所有子节点,将其状态设置为父节点的状态
-            for i in range(item.childCount()):
-                child = item.child(i)
-                # 如果没有设置为隐藏,则设置其状态
-                if not child.isHidden():
-                    child.setCheckState(column, state)
-        # 联动父节点状态
-        parent = item.parent()
-        if parent is not None:
-            checked = 0
-            unchecked = 0
-            count = 0
-            # 遍历所有的子节点设置其状态
-            for i in range(parent.childCount()):
-                child = parent.child(i)
-                if not child.isHidden():
-                    # 子项没有隐藏
-                    count += 1
-                    state = child.checkState(column)
-                    checked += state == Qt.CheckState.Checked
-                    unchecked += state == Qt.CheckState.Unchecked
-            # 对比判断父节点需要设置的状态(不需要检测是否hidden,因为子项选中与否说明父项一定存在)
-            if checked == count:
-                # 设置父节点为全选
-                parent.setCheckState(column, Qt.CheckState.Checked)
-            elif unchecked == count:
-                # 设置父节点为未选中
-                parent.setCheckState(column, Qt.CheckState.Unchecked)
-            else:
-                # 设置父节点为部分选中
-                parent.setCheckState(column, Qt.CheckState.PartiallyChecked)
-        # 可以再次触发信号
-        self.fieldTree.blockSignals(False)
-        # 绘制图表
-        self.drawChart()
-
     def toggleEchartTheme(self, isDark: bool):
         """
         切换echart主题
@@ -586,7 +690,12 @@ class MainInterface(CardWidget):
             theme = "dark"
         else:
             theme = "light"
-        self.htmlWidget.page().runJavaScript(f"registerEChart('{theme}')")
+        self.htmlWidget.page().runJavaScript(
+            f"""
+                registerEChart('{theme}')
+                setBodyBackground('{theme}')
+            """
+        )
 
     def drawChart(self):
         if not self.canDraw:
@@ -618,19 +727,18 @@ class MainInterface(CardWidget):
         """
         xType = self.viewSelectBox.currentIndex()
         options = {
-            "title": {"text": "Ulog分析图"},
+            "animation": "false",
+            "title": {"text": ""},
             "tooltip": {
                 "trigger": "axis",
-                "axisPointer": {"type": "cross", "snap": "true"},
+                "axisPointer": {"type": "cross"},
+                "showDelay": "300",
                 "formatter": "tooltipFormatter",
             },
-            "legend": {"data": []},
-            "grid": {
-                "containLabel": "true",
-            },
+            "legend": {"data": [], "animation": "false"},
             "toolbox": {
                 "feature": {
-                    "dataZoom": {"show": "true"},
+                    "dataZoom": {"filterMode": "none"},
                 }
             },
             "xAxis": {
@@ -641,40 +749,28 @@ class MainInterface(CardWidget):
                 },
             },
             "yAxis": {"type": "value"},
-            "series": [],
             "dataZoom": [
                 {
-                    "id": "dataZoomX",
-                    # 通过滑块来缩放数据
-                    "type": "slider",
-                    "show": "true",
-                    "xAxisIndex": [0],
-                    # 滑动时触发的频率，控制缩放时的性能
-                    "throttle": 50,
-                },
-                {
-                    "id": "dataZoomY",
-                    # 通过滑块来缩放数据
-                    "type": "slider",
-                    "show": "true",
-                    "yAxisIndex": [0],
-                    # 滑动时触发的频率，控制缩放时的性能
-                    "throttle": 50,
-                },
-                {
+                    "id": "insideX",
                     # 通过滚轮缩放
                     "type": "inside",
                     "xAxisIndex": [0],
-                    "throttle": 50,
+                    "throttle": 200,
+                    "filterMode": "none",
                 },
                 {
+                    "id": "insideY",
                     # 通过滚轮缩放
                     "type": "inside",
                     "yAxisIndex": [0],
-                    "throttle": 50,
+                    "throttle": 200,
+                    "filterMode": "none",
                 },
             ],
+            "series": [],
         }
+        threshold = int(appConfig.get(appConfig.chartThreshold))
+        sampling = appConfig.get(appConfig.chartSampling)
         # 检查哪些选项被选中
         for i in range(self.fieldTree.topLevelItemCount()):
             topItem = self.fieldTree.topLevelItem(i)
@@ -690,13 +786,18 @@ class MainInterface(CardWidget):
                     data = self.fields[topFieldText][innerFieldText]
                     # 折线属性
                     options["legend"]["data"].append(f"{topFieldText}.{innerFieldText}")
-                    times = self.fields[topFieldText]["timestamp"].tolist()
-                    values = data["value"].tolist()
+                    times = self.fields[topFieldText]["timestamp"]
+                    values = data["value"]
                     zoom = data["zoom"]
                     offset = data["offset"]
-                    optionData = [
-                        [times[i], values[i] * zoom + offset] for i in range(len(times))
-                    ]
+                    
+                    # numpy合并
+                    optionData = np.stack((times, values * zoom + offset), axis=1)
+                    # 是否降采样
+                    if len(optionData) > threshold and sampling == "lttb":
+                        optionData = lttb_downsampled(optionData, len(optionData) // 2)
+                    # 再转为list
+                    optionData = optionData.tolist()
                     # 数据
                     options["series"].append(
                         {
@@ -705,8 +806,10 @@ class MainInterface(CardWidget):
                             "data": optionData,
                             # 点大小
                             "symbolSize": 2,
-                            # 采用 Largest-Triangle-Three-Bucket 算法，可以最大程度保证采样后线条的趋势，形状和极值。
-                            "sampling": "lttb",
+                            # 关闭动画
+                            "animation": "false",
+                            # 大数据优化,对type为line不生效
+                            "large": "true",
                         }
                     )
         return options

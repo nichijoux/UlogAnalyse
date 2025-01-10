@@ -10,14 +10,25 @@
 
 ## 介绍
 
-UlogAnalyse 日志分析软件是一个基于 PyQt6、pyulog 和 EChart 的日志查看工具，可以通过图形化的界面查看 ulg 文件的各项参数
+UlogAnalyse 日志分析软件是一个基于 PyQt6、qfluentwidgets、pyulog 和 EChart 的日志查看工具，可以通过图形化的界面查看 ulg 文件的各项参数
 
 ## 特色
 
 - 支持打开一个和多个 ulg 文件
+  - 可对 ulg 数据进行显示
+  - 可对 ulg 属性进行缩放和偏移
+  - 同时打开多个 ulg 文件,软件将会视其为同一组 ulg 文件,属性将被合并
+- 将ulg文件导出csv文件
 - 现代化的 UI 界面
-- 基于 echart 的数据图像显示
+  - 适配浅色和深色模式跟随
+  - 基于 qfluentwidgets 的 UI
+  - 基于 echart 的数据图像显示
+  - 可对图像进行局部缩放和拖动显示
 - 个性化设置
+  - 设置导出文件路径
+  - 设置导出
+  - 设置 echart 图表采样算法和阈值
+  - 可根据 json 文件显示 ulg 对应属性名,如根据 parameter_dict.json 可在选中 flight.flight_mode 时在显示对应配置
 
 ## 使用方法
 
