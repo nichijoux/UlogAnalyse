@@ -70,7 +70,7 @@ class ThresholdValidator(ConfigValidator):
             return False
 
     def correct(self, value) -> str:
-        return value if self.validate(value) else "6000"
+        return value if self.validate(value) else str(self.defaultValue)
 
 
 class Config(QConfig):
@@ -147,7 +147,7 @@ class Config(QConfig):
 COPYRIGHT = {
     "YEAR": 2025,
     "AUTHOR": "nichijoux",
-    "VERSION": "1.2.0",
+    "VERSION": "1.2.1",
     "AUTHOR_URL": "https://github.com/nichijoux",
     "PROJECT_DOWNLOAD_URL": "https://github.com/nichijoux/UlogAnalyse/releases",
     "FEEDBACK_URL": "https://github.com/nichijoux/UlogAnalyse/issues",
