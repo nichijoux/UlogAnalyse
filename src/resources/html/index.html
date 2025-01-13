@@ -50,7 +50,7 @@
     </style>
 </head>
 
-<body>
+<body oncontextmenu="return false">
     <!-- 为 ECharts 准备一个定义了宽高的 DOM -->
     <div id="main"></div>
     <script type="text/javascript">
@@ -77,41 +77,45 @@
                 return timestamp
             }
         }
-        // 添加指示线
-        function addMarkLine(xValue) {
+        // 添加和删除指示线
+        function setMarkLine(xValue) {
             if (!options) {
                 return
             }
-            for (let i = 0; i < options['series'].length; i++) {
-                if (options['series'][i].name == '__echartMarkLine') {
-                    options['series'].pop()
+            let series = options['series']
+            if (series[series.length - 1].name == "__echartMarkLine") {
+                // 存在markLine
+                let echartMarkline = series[series.length - 1]
+                if (echartMarkline.markLine.data != '' && echartMarkline.markLine.data[0].xAxis == xValue) {
+                    echartMarkline.markLine.data = ''
+                } else {
+                    echartMarkline.markLine.label.formatter = ulogTimestampToTime(xValue, 1).toString()
+                    echartMarkline.markLine.data = [{ xAxis: xValue }]
                 }
-            }
-            options['series'].push({
-                name: "__echartMarkLine",
-                type: "line",
-                markLine: {
-                    // 上下图标可以单独设置，可为空
-                    symbolSize: [14, 17],
-                    label: {
-                        show: true,
-                        padding: [0, 0, 5, 0],
-                        formatter() {
-                            return ulogTimestampToTime(xValue, 1)
+            } else {
+                // 不存在markLine
+                series.push({
+                    name: "__echartMarkLine",
+                    type: "line",
+                    markLine: {
+                        data: [{ xAxis: xValue }],
+                        // 上下图标可以单独设置，可为空
+                        symbolSize: [14, 17],
+                        label: {
+                            show: true,
+                            padding: [0, 0, 5, 0],
+                            formatter: ulogTimestampToTime(xValue, 1).toString()
+                        },
+                        lineStyle: {
+                            "width": 1,
+                            "color": '#979797'
                         }
                     },
-                    data: [
-                        {
-                            xAxis: xValue
-                        }
-                    ],
-                    lineStyle: {
-                        "width": 1,
-                        "color": '#979797'
-                    }
-                },
+                })
+            }
+            myChart.setOption({
+                'series': series
             })
-            myChart.setOption(options)
         }
         // 重新注册EChart
         function registerEChart(theme) {
@@ -124,16 +128,10 @@
             }
             // 获取缩放后的x轴和y轴范围
             myChart.on("dataZoom", function (params) {
-                //const originOption = myChart.getOption()
-                //const xAxisMin = originOption.xAxis[0].min;
-                //const xAxisMax = originOption.xAxis[1].max;
-                //const yAxisMin = originOption.yAxis[0].min;
-                //const yAxisMax = originOption.yAxis[1].max;
                 // 直接获取缩放后的刻度线
-                //let xSE = myChart.getModel().getComponent("xAxis").axis.scale._extent
-                //let ySE = myChart.getModel().getComponent("yAxis").axis.scale._extent
-               // echartHandler.zoomAxis(xSE[0], xSE[1], ySE[0], ySE[1])
-               // echartHandler.print(xAxisMin, xAxisMax, yAxisMin, yAxisMax)
+                let xSE = myChart.getModel().getComponent("xAxis").axis.scale._extent
+                let ySE = myChart.getModel().getComponent("yAxis").axis.scale._extent
+                echartHandler.zoomAxis(xSE[0], xSE[1], ySE[0], ySE[1])
             })
         }
         // tooltipFormatter

@@ -27,7 +27,8 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtWebChannel import QWebChannel
 import numpy as np
-import os, json
+import os, json, sys
+from collections import defaultdict
 from src.common.config import appConfig
 from src.gui.components.label_input_card import LabelInputCard
 from src.gui.components.label_text_card import LabelTextCard
@@ -38,11 +39,11 @@ from src.utils.common_utils import *
 
 
 class EChartHandler(QObject):
-    filterData = pyqtSignal(float, float, float, float)
+    echartZoomed = pyqtSignal(float, float, float, float)
 
     @pyqtSlot(float, float, float, float)
     def zoomAxis(self, xS, xE, yS, yE):
-        self.filterData.emit(xS, xE, yS, yE)
+        self.echartZoomed.emit(xS, xE, yS, yE)
 
 
 class ExportThread(QThread):
@@ -293,7 +294,7 @@ class MainInterface(CardWidget):
         # 日志参数按钮
         self.parameterButton.clicked.connect(self.openInfoDialog)
         # 视图选项
-        self.viewSelectBox.currentIndexChanged.connect(self.onViewSelectChanged)
+        self.viewSelectBox.currentIndexChanged.connect(lambda: self.drawChart())
         # 导出按钮
         self.exportButton.clicked.connect(self.exportCSV)
         # 搜索框
@@ -310,22 +311,29 @@ class MainInterface(CardWidget):
         self.htmlWidget.loadFinished.connect(
             lambda: self.toggleEchartTheme(isDarkTheme())
         )
+        # js和python间事件注册
+        self.echartHandler.echartZoomed.connect(self.zoomDrawChart)
 
     def openUlog(self):
         """
         打开ulog文件并解析(可以打开多个)
         """
-        # # 在打开文件前,存储已经展示了哪些属性
-        displayedFields = {}
+        # 在打开文件前,存储已经展示了哪些属性
+        displayedFields = defaultdict(dict)
         for i in range(self.fieldTree.topLevelItemCount()):
             topItem = self.fieldTree.topLevelItem(i)
+            topField = topItem.text(0)
             # 遍历子项
             for j in range(topItem.childCount()):
                 innerItem = topItem.child(j)
                 if innerItem.checkState(0) == Qt.CheckState.Checked:
-                    displayedFields.setdefault(topItem.text(0), []).append(
-                        innerItem.text(0)
-                    )
+                    # 被选中了
+                    innerField = innerItem.text(0)
+                    # 原地修改
+                    displayedFields[topField][innerField] = {
+                        "zoom": self.fields[topField][innerField]["zoom"],
+                        "offset": self.fields[topField][innerField]["offset"],
+                    }
         # 使用QFileDialog打开文件对话框
         fileList, _ = QFileDialog.getOpenFileNames(
             self, "选择文件", "", "ulog文件(*.ulg)"
@@ -352,45 +360,47 @@ class MainInterface(CardWidget):
             else:
                 fields = get_fields_dict(ulog)
                 # 拼接数据
-                for topKey in self.fields:
-                    for innerKey in self.fields[topKey]:
-                        # 确保field也有这些数据
-                        if topKey not in fields:
-                            continue
-                        if innerKey not in fields[topKey]:
-                            continue
-                        if innerKey == "timestamp":
-                            self.fields[topKey][innerKey] = np.concatenate(
-                                (
-                                    self.fields[topKey][innerKey],
-                                    fields[topKey][innerKey],
-                                ),
-                                axis=0,
-                            )
-                        else:
-                            self.fields[topKey][innerKey]["value"] = np.concatenate(
-                                (
-                                    self.fields[topKey][innerKey]["value"],
-                                    fields[topKey][innerKey]["value"],
-                                ),
-                                axis=0,
-                            )
+                for topKey, innerFields in self.fields.items():
+                    if topKey not in fields:
+                        continue
+                    for innerKey, fieldData in innerFields.items():
+                        if innerKey in fields[topKey]:
+                            if innerKey == "timestamp":
+                                self.fields[topKey][innerKey] = np.concatenate(
+                                    (fieldData, fields[topKey][innerKey]), axis=0
+                                )
+                            else:
+                                self.fields[topKey][innerKey]["value"] = np.concatenate(
+                                    (
+                                        fieldData["value"],
+                                        fields[topKey][innerKey]["value"],
+                                    ),
+                                    axis=0,
+                                )
         # 日志信息以最后一个为准
         self.ulogInfo, errors = get_ulog_info(ulog)
         # 显示属性
         self.displayFields()
-        # 勾选对应属性
+        # 勾选对应属性,并赋予offset和zoom
         self.fieldTree.blockSignals(True)
         for i in range(self.fieldTree.topLevelItemCount()):
             topItem = self.fieldTree.topLevelItem(i)
+            topField = topItem.text(0)
             checked = 0
-            if topItem.text(0) in displayedFields:
+            if topField in displayedFields:
                 # 如果属性存在则遍历子项
                 for j in range(topItem.childCount()):
                     innerItem = topItem.child(j)
-                    if innerItem.text(0) in displayedFields[topItem.text(0)]:
+                    innerField = innerItem.text(0)
+                    if innerField in displayedFields[topField]:
                         checked += 1
                         innerItem.setCheckState(0, Qt.CheckState.Checked)
+                        # 更新zoom和offset
+                        fieldData = displayedFields[topField][innerField]
+                        self.fields[topField][innerField].update(
+                            {"zoom": fieldData["zoom"], "offset": fieldData["offset"]}
+                        )
+            # 检查父项,是否需要勾选
             if checked == topItem.childCount():
                 topItem.setCheckState(0, Qt.CheckState.Checked)
             elif checked > 0:
@@ -466,12 +476,11 @@ class MainInterface(CardWidget):
         """
         parent = item.parent()
         if parent:
-            topField = parent.text(column)
-            innerField = item.text(column)
+            topField, innerField = parent.text(column), item.text(column)
             data = self.fields[topField][innerField]
-            translate = None
-            if hasattr(self, "fieldConfig"):
-                translate = self.fieldConfig.get(topField, {}).get(innerField)
+            translate = (
+                getattr(self, "fieldConfig", {}).get(topField, {}).get(innerField)
+            )
             # 改变数据
             self.fieldLabelCard.setText(
                 f"{topField}.{innerField}({translate})"
@@ -481,8 +490,7 @@ class MainInterface(CardWidget):
             self.fieldOffsetCard.setInitValue(data["offset"])
             self.fieldZoomCard.setInitValue(data["zoom"])
             # 设置当前选中了那个元素
-            self.selectTopField = topField
-            self.selectInnerField = innerField
+            self.selectTopField, self.selectInnerField = topField, innerField
 
     def onFieldChanged(self, item: QTreeWidgetItem, column: int):
         # 禁止再次发送信号
@@ -500,28 +508,27 @@ class MainInterface(CardWidget):
         # 联动父节点状态
         parent = item.parent()
         if parent is not None:
-            checked = 0
-            unchecked = 0
-            count = 0
-            # 遍历所有的子节点设置其状态
-            for i in range(parent.childCount()):
-                child = parent.child(i)
-                if not child.isHidden():
-                    # 子项没有隐藏
-                    count += 1
-                    state = child.checkState(column)
-                    checked += state == Qt.CheckState.Checked
-                    unchecked += state == Qt.CheckState.Unchecked
-            # 对比判断父节点需要设置的状态(不需要检测是否hidden,因为子项选中与否说明父项一定存在)
-            if checked == count:
-                # 设置父节点为全选
-                parent.setCheckState(column, Qt.CheckState.Checked)
-            elif unchecked == count:
-                # 设置父节点为未选中
-                parent.setCheckState(column, Qt.CheckState.Unchecked)
+            # 统计子节点的选中和未选中状态
+            visible_children = [
+                child
+                for i in range(parent.childCount())
+                if not (child := parent.child(i)).isHidden()
+            ]
+            checked = sum(
+                child.checkState(column) == Qt.CheckState.Checked
+                for child in visible_children
+            )
+            unchecked = sum(
+                child.checkState(column) == Qt.CheckState.Unchecked
+                for child in visible_children
+            )
+            # 设置父节点状态
+            if checked == len(visible_children):
+                parent.setCheckState(column, Qt.CheckState.Checked)  # 全选
+            elif unchecked == len(visible_children):
+                parent.setCheckState(column, Qt.CheckState.Unchecked)  # 未选中
             else:
-                # 设置父节点为部分选中
-                parent.setCheckState(column, Qt.CheckState.PartiallyChecked)
+                parent.setCheckState(column, Qt.CheckState.PartiallyChecked)  # 部分选中
         # 可以再次触发信号
         self.fieldTree.blockSignals(False)
         # 绘制图表
@@ -540,7 +547,7 @@ class MainInterface(CardWidget):
         # 在右侧添加一条垂线
         self.htmlWidget.page().runJavaScript(
             f"""
-            addMarkLine({timeValue})
+            setMarkLine({timeValue})
             """
         )
 
@@ -555,17 +562,6 @@ class MainInterface(CardWidget):
             self.fields[self.selectTopField][self.selectInnerField]["zoom"] = value
             # 重绘图表
             self.drawChart()
-
-    def onViewSelectChanged(self, index: int):
-        """
-        描述:
-            数据时间展示
-
-        参数:
-            index (int): combox传入的下标
-        """
-        # 重新绘制图表格
-        self.drawChart()
 
     @debounce(1000)
     @throttle(500)
@@ -725,7 +721,6 @@ class MainInterface(CardWidget):
         Returns:
             _type_: echart配置
         """
-        xType = self.viewSelectBox.currentIndex()
         options = {
             "animation": "false",
             "title": {"text": ""},
@@ -745,7 +740,7 @@ class MainInterface(CardWidget):
                 "type": "value",
                 "max": "dataMax",
                 "axisLabel": {
-                    "formatter": f"value => ulogTimestampToTime(value, {xType});"
+                    "formatter": f"value => ulogTimestampToTime(value, {self.viewSelectBox.currentIndex()});"
                 },
             },
             "yAxis": {"type": "value"},
@@ -769,9 +764,40 @@ class MainInterface(CardWidget):
             ],
             "series": [],
         }
-        threshold = int(appConfig.get(appConfig.chartThreshold))
-        sampling = appConfig.get(appConfig.chartSampling)
-        # 检查哪些选项被选中
+        series = self.seriesPreprocessing()
+        # 折线属性
+        options["legend"]["data"] = list(map(lambda item: item["name"], series))
+        options["series"] = series
+        return options
+
+    def seriesPreprocessing(
+        self,
+        xs: float = -sys.float_info.max,
+        xe: float = sys.float_info.max,
+        ys: float = -sys.float_info.max,
+        ye: float = sys.float_info.max,
+    ) -> dict:
+        """
+        描述:
+            通过采样算法和要绘制的图形区域，预处理要绘制的数据
+
+        参数:
+            xs (float, optional): 缩放后x轴的起始值
+            xe (float, optional): 缩放后x轴的终止值
+            ys (float, optional): 缩放后y轴的起始值
+            ye (float, optional): 缩放后y轴的终止值
+
+        返回值:
+            dict: echart中option的series项
+        """
+        # 获取算法
+        samplingMethod = getSamplingMethod(appConfig.get(appConfig.chartSampling))
+        # 获取降采样点后的数量
+        insidePointNum = int(appConfig.get(appConfig.insidePointNum))
+        partPointNum = int(appConfig.get(appConfig.partPointNum))
+        outsidePointNum = int(appConfig.get(appConfig.outsidePointNum))
+        # 图像绘制预处理
+        series = []
         for i in range(self.fieldTree.topLevelItemCount()):
             topItem = self.fieldTree.topLevelItem(i)
             for j in range(topItem.childCount()):
@@ -785,21 +811,49 @@ class MainInterface(CardWidget):
                     innerFieldText = innerItem.text(0)
                     data = self.fields[topFieldText][innerFieldText]
                     # 折线属性
-                    options["legend"]["data"].append(f"{topFieldText}.{innerFieldText}")
                     times = self.fields[topFieldText]["timestamp"]
                     values = data["value"]
-                    zoom = data["zoom"]
-                    offset = data["offset"]
-                    
+                    zoom, offset = data["zoom"], data["offset"]
                     # numpy合并
                     optionData = np.stack((times, values * zoom + offset), axis=1)
-                    # 是否降采样
-                    if len(optionData) > threshold and sampling == "lttb":
-                        optionData = lttb_downsampled(optionData, len(optionData) // 2)
-                    # 再转为list
-                    optionData = optionData.tolist()
-                    # 数据
-                    options["series"].append(
+                    # 使用布尔索引过滤数据
+                    # x轴方向条件
+                    x_condition = (optionData[:, 0] >= xs) & (optionData[:, 0] <= xe)
+                    x_left_condition = optionData[:, 0] <= xs
+                    x_right_condition = optionData[:, 0] >= xe
+                    # y轴方向条件
+                    y_condition = (optionData[:, 1] >= ys) & (optionData[:, 1] <= ye)
+                    y_top_condition = optionData[:, 1] >= ye
+                    y_bottom_condition = optionData[:, 1] <= ys
+                    # 画图区域被划为五部分、分别是左侧x_left、y_top、inside、y_bottom、x_right
+                    # 其中x_left和x_right区域完全不会显示出
+                    # y_top和y_bottom则可能存在部分点和inside部分有联系
+                    insideData = optionData[x_condition & y_condition]
+                    leftData = optionData[x_left_condition]
+                    rightData = optionData[x_right_condition]
+                    topData = optionData[x_condition & y_top_condition]
+                    bottomData = optionData[x_condition & y_bottom_condition]
+                    # 对topData、insideData、rightData采样和合并
+                    centerData = np.concatenate(
+                        (
+                            samplingMethod(topData, partPointNum),
+                            samplingMethod(insideData, insidePointNum),
+                            samplingMethod(bottomData, partPointNum),
+                        ),
+                        axis=0,
+                    )
+                    # 按时间排序
+                    centerData = centerData[np.argsort(centerData[:, 0])]
+                    # 完全合并
+                    optionData = np.concatenate(
+                        (
+                            samplingMethod(leftData, outsidePointNum),
+                            centerData,
+                            samplingMethod(rightData, outsidePointNum),
+                        ),
+                        axis=0,
+                    ).tolist()
+                    series.append(
                         {
                             "name": f"{topFieldText}.{innerFieldText}",
                             "type": appConfig.get(appConfig.chartType),
@@ -812,4 +866,37 @@ class MainInterface(CardWidget):
                             "large": "true",
                         }
                     )
-        return options
+        return series
+
+    def zoomDrawChart(
+        self,
+        xs: float = -sys.float_info.max,
+        xe: float = sys.float_info.max,
+        ys: float = -sys.float_info.max,
+        ye: float = sys.float_info.max,
+    ):
+        """
+        描述:
+            缩放后重绘echart图像
+
+        参数:
+            xs (float): 缩放后x轴的起始值
+            xe (float): 缩放后x轴的终止值
+            ys (float): 缩放后y轴的起始值
+            ye (float): 缩放后y轴的终止值
+        """
+        series = self.seriesPreprocessing(xs, xe, ys, ye)
+        # 对insideX和insideY设置缩放后的起始值和终止值
+        options = {
+            "dataZoom": [
+                {"id": "insideX", "startValue": xs, "endValue": xe},
+                {"id": "insideY", "startValue": ys, "endValue": ye},
+            ],
+            "series": series,
+        }
+        # 画图
+        self.htmlWidget.page().runJavaScript(
+            f"""
+            myChart.setOption(eval({options}))
+            """
+        )

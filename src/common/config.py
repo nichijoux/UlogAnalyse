@@ -50,6 +50,12 @@ class GeometrySerializer(ConfigSerializer):
 
 
 class ThresholdValidator(ConfigValidator):
+    defaultValue: int
+
+    def __init__(self, value: int):
+        super().__init__()
+        self.defaultValue = value
+
     """
     图像采样阈值设置
 
@@ -87,15 +93,29 @@ class Config(QConfig):
         "Software",
         "ChartSampling",
         "lttb",
-        OptionsValidator(["lttb", "none"]),
+        OptionsValidator(["lttb", "average", "min", "max", "none"]),
         restart=False,
     )
     # 图表采样阈值
-    chartThreshold = ConfigItem(
+    insidePointNum = ConfigItem(
         "Software",
-        "ChartThreshold",
-        "6000",
-        ThresholdValidator(),
+        "InsidePointNum",
+        "1000",
+        ThresholdValidator(1000),
+        restart=False,
+    )
+    partPointNum = ConfigItem(
+        "Software",
+        "PartPointNum",
+        "200",
+        ThresholdValidator(200),
+        restart=False,
+    )
+    outsidePointNum = ConfigItem(
+        "Software",
+        "OutsidePointNum",
+        "100",
+        ThresholdValidator(100),
         restart=False,
     )
 
@@ -127,7 +147,7 @@ class Config(QConfig):
 COPYRIGHT = {
     "YEAR": 2025,
     "AUTHOR": "nichijoux",
-    "VERSION": "1.1.0",
+    "VERSION": "1.2.0",
     "AUTHOR_URL": "https://github.com/nichijoux",
     "PROJECT_DOWNLOAD_URL": "https://github.com/nichijoux/UlogAnalyse/releases",
     "FEEDBACK_URL": "https://github.com/nichijoux/UlogAnalyse/issues",

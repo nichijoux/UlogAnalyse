@@ -41,56 +41,126 @@ def throttle(wait_ms):
     return decorator
 
 
-def lttb_downsampled(data: np.ndarray, threshold: int) -> np.ndarray:
+def getSamplingMethod(sampling: str):
+    match sampling:
+        case "lttb":
+            return lttbDownsampled
+        case "average":
+            return averageDownsampled
+        case "min":
+            return minDownsampled
+        case "max":
+            return maxDownsampled
+        case _:
+            return noneDownsampled
+
+
+def lttbDownsampled(data: np.ndarray, nout: int) -> np.ndarray:
     """
     描述:
         lttb算法的python实现
 
     参数:
         data (np.ndarray): 原始数组[[x,y],[x,y],[x,y]]
-        threshold (int): 阈值
+        nout (int): 降采样后的数据点数
 
     返回值:
-        np.ndarray: 仍返回一个numpy数组
+        np.ndarray: 降采样后的数据
     """
-
-    # 小于阈值时直接返回
-    if len(data) <= threshold:
+    # 小于nout和3时直接返回
+    if len(data) <= nout or len(data) < 3:
         return data
 
-    # Calculate the number of points to skip in the buckets
     n = len(data)
-    # 永远包括第一个点
-    sampled = [data[0]]
-    # lttb算法的bucket数量
-    bucket_size = (n - 2) // (threshold - 2)
-    # 遍历数据并计算最大的三角形
-    for i in range(1, threshold - 1):
+    sampled = [data[0]]  # 永远包括第一个点
+
+    # 每个bucket的大小 (整数)
+    bucket_size = (n - 2) // (nout - 2)
+    # 剩余点数用于调整最后几个bucket
+    leftover = (n - 2) % (nout - 2)
+    current_bucket_start = 1
+
+    for i in range(1, nout - 1):
+        # 根据剩余点数调整每个bucket的end
+        bucket_end = current_bucket_start + bucket_size - 1
+        if i <= leftover:
+            # 分配剩余点数
+            bucket_end += 1
+
+        # 确保不越界
+        bucket_end = min(bucket_end, n - 2)
+
         max_area = -1
-        max_area_index = 0
-        start = i * bucket_size
-        # 确保下标不越界
-        end = min((i + 1) * bucket_size, n - 1)
-        # 循环遍历start,end中的数据
-        for j in range(start, end):
-            # 计算由点data[i - 1]、data[j] 和 data[i + 1]形成的三角形的面积
-            area = area_of_triangle(data[i - 1], data[j], data[i + 1])
-            # 更新最大面积和下标
+        max_area_index = current_bucket_start
+
+        # 遍历bucket内的点，寻找面积最大的点
+        for j in range(current_bucket_start, bucket_end + 1):
+            # 计算三角形面积
+            x1, y1 = sampled[i - 1]
+            x2, y2 = data[j]
+            x3, y3 = data[bucket_end + 1]
+            area = abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) * 0.5
             if area > max_area:
                 max_area = area
                 max_area_index = j
-        # 将面积最大的点添加到采样点列表中
+
         sampled.append(data[max_area_index])
+        current_bucket_start = bucket_end + 1
+
     # 添加最后一个点
     sampled.append(data[-1])
     return np.array(sampled)
 
 
-def area_of_triangle(p1, p2, p3):
+def averageDownsampled(data: np.ndarray, nout: int) -> np.ndarray:
     """
-    计算由 3 个点形成的三角形的面积，使用由点形成的矩阵的行列式。
+    描述:
+        平均采样算法,对数据进行平均值降采样
+
+    参数:
+        data (np.ndarray): 原始数据
+        nout (int): 降采样后的数据点数
+
+    返回值
+        np.ndarray: 降采样后的数据
     """
-    x1, y1 = p1
-    x2, y2 = p2
-    x3, y3 = p3
-    return abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2)) * 0.5
+    if len(data) <= nout:
+        # 如果数据点数少于或等于阈值，无需降采样
+        return data
+    # 使用 np.array_split 均匀分组
+    groups = np.array_split(data, nout)
+    # 对每一组计算平均值
+    downsampledData = np.array([np.mean(group, axis=0) for group in groups])
+    return downsampledData
+
+
+def minDownsampled(data: np.ndarray, nout: int) -> np.ndarray:
+    if len(data) <= nout:
+        # 如果数据点数少于或等于阈值，无需降采样
+        return data
+    # 使用 np.array_split 均匀分组
+    groups = np.array_split(data, nout)
+    downsampledData = []
+    for group in groups:
+        index = np.argmin(group[:, 1])
+        point = group[index]
+        downsampledData.append(point)
+    return np.array(downsampledData)
+
+
+def maxDownsampled(data: np.ndarray, nout: int) -> np.ndarray:
+    if len(data) <= nout:
+        # 如果数据点数少于或等于阈值，无需降采样
+        return data
+    # 使用 np.array_split 均匀分组
+    groups = np.array_split(data, nout)
+    downsampledData = []
+    for group in groups:
+        index = np.argmax(group[:, 1])
+        point = group[index]
+        downsampledData.append(point)
+    return np.array(downsampledData)
+
+
+def noneDownsampled(data: np.ndarray, nout: int) -> np.ndarray:
+    return data

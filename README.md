@@ -24,6 +24,7 @@ UlogAnalyse 日志分析软件是一个基于 PyQt6、qfluentwidgets、pyulog �
   - 基于 qfluentwidgets 的 UI
   - 基于 echart 的数据图像显示
   - 可对图像进行局部缩放和拖动显示
+  - 点击日志表格项可添加和删除指示线
 - 个性化设置
   - 设置导出文件路径
   - 设置导出

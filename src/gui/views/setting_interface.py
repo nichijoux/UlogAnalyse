@@ -105,15 +105,31 @@ class SettingInterface(SmoothScrollArea):
             Icons.CLIPPING_TOOL,
             "图表采样算法",
             "选择切换echart图表采样算法,默认使用lttb算法采样,none表示不进行采样,不同采样算法能不同程度上提高echart绘图速度。",
-            texts=["lttb", "none"],
+            texts=["lttb", "average", "min", "max", "none"],
             parent=self.softGroup,
         )
-        self.chartThresholdCard = InputSettingCard(
-            configItem=appConfig.chartThreshold,
+        self.insidePointNumCard = InputSettingCard(
+            configItem=appConfig.insidePointNum,
             regStr=r"^\d+$",
             icon=Icons.FONT_SIZE,
-            title="渲染阈值",
-            content="数据量超过阈值时则将使用采样算法",
+            title="可视区采样点数量",
+            content="数据量超过阈值时则将使用采样算法,可视区采样后将降低到的采样点数量",
+            parent=self.softGroup,
+        )
+        self.partPointNumCard = InputSettingCard(
+            configItem=appConfig.partPointNum,
+            regStr=r"^\d+$",
+            icon=Icons.FONT_SIZE,
+            title="部分可视区采样点数量",
+            content="数据量超过阈值时则将使用采样算法,部分可视区域外将降低到的采样点数量",
+            parent=self.softGroup,
+        )
+        self.outsidePointNumCard = InputSettingCard(
+            configItem=appConfig.outsidePointNum,
+            regStr=r"^\d+$",
+            icon=Icons.FONT_SIZE,
+            title="完全不可视区采样点数量",
+            content="数据量超过阈值时则将使用采样算法,完全不可视区域将降低到的采样点数量",
             parent=self.softGroup,
         )
         # 添加进SettingCardGroup中
@@ -121,7 +137,9 @@ class SettingInterface(SmoothScrollArea):
         self.softGroup.addSettingCard(self.ulogFieldsConfigCard)
         self.softGroup.addSettingCard(self.chartTypeCard)
         self.softGroup.addSettingCard(self.chartSamplingCard)
-        self.softGroup.addSettingCard(self.chartThresholdCard)
+        self.softGroup.addSettingCard(self.insidePointNumCard)
+        self.softGroup.addSettingCard(self.partPointNumCard)
+        self.softGroup.addSettingCard(self.outsidePointNumCard)
 
     def initPersonalWidget(self):
         self.personalGroup = SettingCardGroup("个性化", self.scrollWidget)
@@ -276,10 +294,24 @@ class SettingInterface(SmoothScrollArea):
             InfoBar.success("提示", "采样算法修改成功", duration=1500, parent=self)
             self.chartRedrawSignal.emit()
 
-    def onChartThresholdChanged(self):
-        value = self.chartThresholdCard.inputEdit.text()
-        if value != appConfig.get(appConfig.chartThreshold):
-            appConfig.set(appConfig.chartThreshold, value)
+    def onInsidePointNumChanged(self):
+        value = self.insidePointNumCard.inputEdit.text()
+        if value != appConfig.get(appConfig.insidePointNum):
+            appConfig.set(appConfig.insidePointNum, value)
+            InfoBar.success("提示", "参数修改成功", duration=1500, parent=self)
+            self.chartRedrawSignal.emit()
+
+    def onPartPointNumChanged(self):
+        value = self.partPointNumCard.inputEdit.text()
+        if value != appConfig.get(appConfig.partPointNum):
+            appConfig.set(appConfig.partPointNum, value)
+            InfoBar.success("提示", "参数修改成功", duration=1500, parent=self)
+            self.chartRedrawSignal.emit()
+
+    def onOutsidePointNumChanged(self):
+        value = self.outsidePointNumCard.inputEdit.text()
+        if value != appConfig.get(appConfig.outsidePointNum):
+            appConfig.set(appConfig.outsidePointNum, value)
             InfoBar.success("提示", "参数修改成功", duration=1500, parent=self)
             self.chartRedrawSignal.emit()
 
@@ -310,8 +342,14 @@ class SettingInterface(SmoothScrollArea):
         self.chartSamplingCard.comboBox.currentTextChanged.connect(
             self.onChartSamplingChanged
         )
-        self.chartThresholdCard.inputEdit.editingFinished.connect(
-            self.onChartThresholdChanged
+        self.insidePointNumCard.inputEdit.editingFinished.connect(
+            self.onInsidePointNumChanged
+        )
+        self.partPointNumCard.inputEdit.editingFinished.connect(
+            self.onPartPointNumChanged
+        )
+        self.outsidePointNumCard.inputEdit.editingFinished.connect(
+            self.onOutsidePointNumChanged
         )
         # 个性化
         if sys.platform == "win32":
