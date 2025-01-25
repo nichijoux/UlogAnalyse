@@ -2,7 +2,7 @@
     <h1>UlogAnalyse</h1>
     <br>
     <div align="center">
-        <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-1082C3" alt="Platform">
+        <img src="https://img.shields.io/badge/platform-Windows%20%7C%20Linux-1082C3" alt="Platform">
         <img src="https://img.shields.io/github/downloads/nichijoux/UlogAnalyse/total?color=1082C3" alt="Downloads">
         <img src="https://img.shields.io/github/license/nichijoux/UlogAnalyse?color=1082C3" alt="License">
     </div>

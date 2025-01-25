@@ -144,10 +144,10 @@ class Config(QConfig):
         super().__init__()
 
 
-COPYRIGHT = {
+SOFTWARE_COPYRIGHT = {
     "YEAR": 2025,
     "AUTHOR": "nichijoux",
-    "VERSION": "1.2.1",
+    "VERSION": "1.2.2",
     "AUTHOR_URL": "https://github.com/nichijoux",
     "PROJECT_DOWNLOAD_URL": "https://github.com/nichijoux/UlogAnalyse/releases",
     "FEEDBACK_URL": "https://github.com/nichijoux/UlogAnalyse/issues",

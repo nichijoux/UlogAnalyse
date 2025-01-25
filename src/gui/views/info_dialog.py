@@ -3,7 +3,7 @@ from qfluentwidgets.components.dialog_box.mask_dialog_base import MaskDialogBase
 from PyQt6.QtWidgets import QTableWidgetItem
 from PyQt6.QtGui import QColor
 
-from src.gui.components.info_dialog_ui import LogInfoDialogUI
+from src.gui.components import LogInfoDialogUI
 
 
 class LogInfoDialog(MaskDialogBase, LogInfoDialogUI):

@@ -1,0 +1,121 @@
+name: Build UlogAnalyse
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    strategy:
+      matrix:
+        architecture: [x86_64, arm64]
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          pip install --timeout=300 -r requirements.txt
+          pip install nuitka==2.5.9
+
+      - name: Build with Nuitka
+        run: |
+          mv main.py UlogAnalyse.py
+          python -c "from src.common.config import SOFTWARE_COPYRIGHT; print(SOFTWARE_COPYRIGHT['VERSION'])" > version.txt
+          $version=Get-Content version.txt | Select-Object -Index 3
+          echo "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "VERSION=${{ env.VERSION }}"
+          nuitka --standalone --assume-yes-for-downloads --show-memory --follow-imports --enable-plugins=pyqt6 --output-dir=output --output-filename="UlogAnalyse" --windows-icon-from-ico="images/favicon.ico" --include-data-dir=src/resources=src/resources --windows-console-mode="disable" --product-name="UlogAnalyse" --file-description="UlogAnalyse" --copyright="Copyright(C) 2025 nichijoux" --file-version=$version --product-version=$version UlogAnalyse.py
+
+      - name: Clear excess file
+        run: |
+          del output/UlogAnalyse.dist/*.qm
+          del output/UlogAnalyse.dist/qtwebengine_devtools_resources.pak
+          Remove-Item -Recurse -Force -Path output/UlogAnalyse.dist/qtwebengine_locales
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: UlogAnalyse-v${{ env.VERSION }}-Windows-${{ matrix.architecture }}
+          path: output/UlogAnalyse.dist
+
+  build-macos-14-arm:
+    strategy:
+      matrix:
+        architecture: [arm64]
+    runs-on: macos-14
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install --timeout=300 -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with pyinstaller
+        run: |
+          mv main.py UlogAnalyse.py
+          python -c "from src.common.config import SOFTWARE_COPYRIGHT; print(SOFTWARE_COPYRIGHT['VERSION'])" > version.txt
+          version=$(sed -n '4p' version.txt)
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "VERSION=${{ env.VERSION }}"
+          pyinstaller --name UlogAnalyse --windowed --icon images/favicon.icns --add-data "src/resources/html:src/resources/html" --add-data "src/resources/fonts:src/resources/fonts" --add-data "src/resources/images:src/resources/images" UlogAnalyse.py
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: UlogAnalyse-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}
+          path: dist/UlogAnalyse/
+
+  build-ubuntu:
+    strategy:
+      matrix:
+        architecture: [x86_64, arm64]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1-mesa
+          pip install --timeout=300 -r requirements.txt
+          pip install nuitka
+
+      - name: Build with Nuitka
+        run: |
+          mv main.py UlogAnalyse.py
+          python -c "from src.common.config import SOFTWARE_COPYRIGHT; print(SOFTWARE_COPYRIGHT['VERSION'])" > version.txt
+          version=$(sed -n '4p' version.txt)
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "VERSION=${{ env.VERSION }}"
+          nuitka --include-data-dir=src/resources=src/resources --standalone --enable-plugin=pyqt6 --show-memory --output-dir=output --disable-console --product-name="UlogAnalyse" --file-description="UlogAnalyse" --copyright="Copyright(C) 2025 nichijoux" --file-version=$version --product-version=$version UlogAnalyse.py
+
+      - name: Clear excess file
+        run: |
+          rm output/UlogAnalyse.dist/*.qm
+          rm -rf output/UlogAnalyse.dist/qtwebengine_locales
+          rm output/UlogAnalyse.dist/qtwebengine_devtools_resources.pak
+  
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: UlogAnalyse-v${{ env.VERSION }}-Linux-${{ matrix.architecture }}
+          path: output/UlogAnalyse.dist

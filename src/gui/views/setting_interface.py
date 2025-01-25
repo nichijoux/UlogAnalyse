@@ -16,11 +16,11 @@ from loguru import logger
 import sys, json
 import http.client
 from urllib.parse import urlparse
-from src.gui.components.input_setting_card import InputSettingCard
-from src.common.config import COPYRIGHT, appConfig
+from src.gui.components import InputSettingCard
+from src.common import SOFTWARE_COPYRIGHT, appConfig
 
 
-class GetUpdateThread(QThread):
+class GetVersionThread(QThread):
     getResponse = pyqtSignal(dict)
 
     def __init__(self, parent=None):
@@ -45,7 +45,7 @@ class GetUpdateThread(QThread):
                 tagName = content["tag_name"]
                 # 获取新版本和当前版本的版本号
                 latestVersion = list(map(int, tagName.split(".")))
-                currentVersion = list(map(int, COPYRIGHT["VERSION"].split(".")))
+                currentVersion = list(map(int, SOFTWARE_COPYRIGHT["VERSION"].split(".")))
                 # 如果存在新版本则跳转
                 if latestVersion > currentVersion:
                     self.getResponse.emit(content)
@@ -165,11 +165,11 @@ class SettingInterface(SmoothScrollArea):
     def initAboutWidget(self):
         self.aboutGroup = SettingCardGroup("关于", self.scrollWidget)
         self.authorCard = HyperlinkCard(
-            COPYRIGHT["AUTHOR_URL"],
+            SOFTWARE_COPYRIGHT["AUTHOR_URL"],
             "打开作者的个人空间",
             Icons.PROJECTOR,
             "了解作者",
-            f"发现更多 {COPYRIGHT['AUTHOR']} 的作品",
+            f"发现更多 {SOFTWARE_COPYRIGHT['AUTHOR']} 的作品",
             self.aboutGroup,
         )
         self.feedbackCard = PrimaryPushSettingCard(
@@ -185,8 +185,8 @@ class SettingInterface(SmoothScrollArea):
             "关于",
             "© "
             + "Copyright"
-            + f" {COPYRIGHT['YEAR']}, {COPYRIGHT['AUTHOR']}. "
-            + f"Version {COPYRIGHT['VERSION']}",
+            + f" {SOFTWARE_COPYRIGHT['YEAR']}, {SOFTWARE_COPYRIGHT['AUTHOR']}. "
+            + f"Version {SOFTWARE_COPYRIGHT['VERSION']}",
             self.aboutGroup,
         )
         self.aboutGroup.addSettingCard(self.authorCard)
@@ -266,10 +266,10 @@ class SettingInterface(SmoothScrollArea):
                 parent=parent,
                 duration=5000,
             )
-            QDesktopServices.openUrl(QUrl(COPYRIGHT["PROJECT_DOWNLOAD_URL"]))
+            QDesktopServices.openUrl(QUrl(SOFTWARE_COPYRIGHT["PROJECT_DOWNLOAD_URL"]))
 
     def checkUpdate(self, parent):
-        thread = GetUpdateThread(parent)
+        thread = GetVersionThread(parent)
         thread.getResponse.connect(lambda content: self.showResponse(parent, content))
         thread.start()
 
@@ -357,7 +357,7 @@ class SettingInterface(SmoothScrollArea):
                 self.onBackgroundEffectCardChanged
             )
         self.feedbackCard.clicked.connect(
-            lambda: QDesktopServices.openUrl(QUrl(COPYRIGHT["FEEDBACK_URL"]))
+            lambda: QDesktopServices.openUrl(QUrl(SOFTWARE_COPYRIGHT["FEEDBACK_URL"]))
         )
         # 检测更新
         self.aboutCard.clicked.connect(self.onAboutClicked)

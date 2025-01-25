@@ -11,10 +11,9 @@ from qframelesswindow.utils import getSystemAccentColor
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtGui import QIcon
 from PyQt6.QtCore import pyqtSignal, QThread, QTimer
-from src.gui.views.main_interface import MainInterface
-from src.gui.views.setting_interface import SettingInterface
-from src.utils.resource_utils import getResource
-from src.common.config import appConfig
+from src.gui.views import MainInterface, SettingInterface
+from src.utils import getResource
+from src.common import appConfig
 
 
 class ThemeChangedListener(QThread):

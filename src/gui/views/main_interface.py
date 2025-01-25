@@ -29,13 +29,9 @@ from PyQt6.QtWebChannel import QWebChannel
 import numpy as np
 import os, json, sys
 from collections import defaultdict
-from src.common.config import appConfig
-from src.gui.components.label_input_card import LabelInputCard
-from src.gui.components.label_text_card import LabelTextCard
-from src.gui.views.info_dialog import LogInfoDialog
-from src.utils.ulog_utils import *
-from src.utils.resource_utils import getResource
-from src.utils.common_utils import *
+from src.common import appConfig
+from src.gui.components import LabelInputCard, LabelTextCard, LogInfoDialog
+from src.utils import *
 
 
 class EChartHandler(QObject):
