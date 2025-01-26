@@ -147,7 +147,7 @@ class Config(QConfig):
 SOFTWARE_COPYRIGHT = {
     "YEAR": 2025,
     "AUTHOR": "nichijoux",
-    "VERSION": "1.2.2",
+    "VERSION": "1.2.3",
     "AUTHOR_URL": "https://github.com/nichijoux",
     "PROJECT_DOWNLOAD_URL": "https://github.com/nichijoux/UlogAnalyse/releases",
     "FEEDBACK_URL": "https://github.com/nichijoux/UlogAnalyse/issues",

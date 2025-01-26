@@ -70,13 +70,13 @@ jobs:
           version=$(sed -n '4p' version.txt)
           echo "VERSION=$version" >> "$GITHUB_ENV"
           echo "VERSION=${{ env.VERSION }}"
-          pyinstaller --name UlogAnalyse --windowed --icon images/favicon.icns --add-data "src/resources/html:src/resources/html" --add-data "src/resources/fonts:src/resources/fonts" --add-data "src/resources/images:src/resources/images" UlogAnalyse.py
+          pyinstaller --name UlogAnalyse --windowed --onefile --icon images/favicon.icns --add-data "src/resources/html:src/resources/html" --add-data "src/resources/fonts:src/resources/fonts" --add-data "src/resources/images:src/resources/images" UlogAnalyse.py
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: UlogAnalyse-v${{ env.VERSION }}-macOS-${{ matrix.architecture }}
-          path: dist/UlogAnalyse/
+          path: dist/
 
   build-ubuntu:
     strategy:

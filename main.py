@@ -2,7 +2,7 @@ from qfluentwidgets import qconfig
 from PyQt6.QtWidgets import QApplication
 import sys, os
 from src.gui.main_window import MainWindow
-from src.common.config import appConfig
+from src.common import appConfig
 
 # 设置环境变量以禁用沙箱
 os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"

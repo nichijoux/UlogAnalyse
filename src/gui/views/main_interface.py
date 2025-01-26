@@ -11,6 +11,7 @@ from qfluentwidgets import (
     InfoBarPosition,
     CaptionLabel,
     isDarkTheme,
+    ToolTipFilter,
 )
 from qframelesswindow.webengine import FramelessWebEngineView
 from PyQt6.QtCore import Qt, QUrl, QObject, pyqtSlot, pyqtSignal, QThread
@@ -108,19 +109,35 @@ class MainInterface(CardWidget):
 
     # ui 部分
     def initHeaderLayout(self):
+        headerLayout = QHBoxLayout()
         # 打开文件按钮
-        self.openButton = PushButton("打开日志", self, Icons.FOLDER)
+        self.openButton = PushButton(Icons.FOLDER, "打开日志")
+        self.openButton.setToolTip(
+            "打开单个或多个ulg日志文件,若同时打开多个ulg文件则软件将其视为同一个文件"
+        )
+        self.openButton.setToolTipDuration(1000)
+        self.openButton.installEventFilter(ToolTipFilter(self.openButton))
         # 日志参数
-        self.parameterButton = PushButton("日志参数", self, Icons.INFO)
+        self.parameterButton = PushButton(Icons.INFO, "日志参数")
+        self.parameterButton.setToolTip(
+            "打开日志参数对话框,对话框将显示ulg日志参数信息"
+        )
+        self.parameterButton.setToolTipDuration(1000)
+        self.parameterButton.installEventFilter(ToolTipFilter(self.parameterButton))
         # 选项按钮
-        self.viewSelectBox = ComboBox(self)
+        self.viewSelectBox = ComboBox()
         self.viewSelectBox.addItems(["Boot时间", "GPS时间"])
         self.viewSelectBox.setCurrentIndex(0)
+        self.viewSelectBox.setToolTip("切换右侧图表x轴显示方式")
+        self.viewSelectBox.setToolTipDuration(1000)
+        self.viewSelectBox.installEventFilter(ToolTipFilter(self.viewSelectBox))
         # 导出按钮
-        self.exportButton = PushButton("导出CSV", self, Icons.IMAGE_EXPORT)
+        self.exportButton = PushButton(Icons.IMAGE_EXPORT, "导出CSV")
         self.exportButton.setHidden(True)
+        self.exportButton.setToolTip("将ulg日志数据导出为csv文件")
+        self.exportButton.setToolTipDuration(1000)
+        self.exportButton.installEventFilter(ToolTipFilter(self.exportButton))
         # 布局设置
-        headerLayout = QHBoxLayout()
         headerLayout.setContentsMargins(5, 5, 5, 5)
         headerLayout.addWidget(self.openButton)
         headerLayout.addSpacing(4)
@@ -720,6 +737,12 @@ class MainInterface(CardWidget):
         options = {
             "animation": "false",
             "title": {"text": ""},
+            "grid": {
+                "left": "3%",
+                "right": "4%",
+                "bottom": "3%",
+                "containLabel": "true",
+            },
             "tooltip": {
                 "trigger": "axis",
                 "axisPointer": {"type": "cross"},
